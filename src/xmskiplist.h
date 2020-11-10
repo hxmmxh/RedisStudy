@@ -28,6 +28,8 @@ typedef struct
     int minex, maxex;
 } zrangespec;
 
+/************************************************************************************/
+
 #define ZSKIPLIST_MAXLEVEL 32 /* Should be enough for 2^32 elements */
 #define ZSKIPLIST_P 0.25      /* Skiplist P = 1/4 */
 
@@ -67,14 +69,17 @@ zskiplist *zslCreate(void);
 //释放给定跳跃表，以及表中的所有节点
 void zslFree(zskiplist *zsl);
 
+// 创建一个成员为 obj ，分值为 score 的新节点， 并将这个新节点插入到跳跃表zsl中。 函数的返回值为新节点。
 zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj);
+// 从跳跃表 zsl 中删除包含给定节点 score 并且带有指定对象 obj 的节点。删除成功返回1，失败返回0
 int zslDelete(zskiplist *zsl, double score, robj *obj);
 
+// 如果给定的分值范围包含在跳跃表的分值范围之内，那么返回 1 ，否则返回 0 
 int zslIsInRange(zskiplist *zsl, zrangespec *range);
+//返回 zsl 中第一个分值符合 range 中指定范围的节点,如果没有，返回NULL
 zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range);
+//返回 zsl 中最后一个分值符合 range 中指定范围的节点。如果没有，返回NULL
 zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range);
-
-double zzlGetScore(unsigned char *sptr);
 
 unsigned long zslGetRank(zskiplist *zsl, double score, robj *o);
 zskiplistNode *zslGetElementByRank(zskiplist *zsl, unsigned long rank);

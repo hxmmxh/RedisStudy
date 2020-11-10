@@ -1,17 +1,14 @@
 cmake_minimum_required (VERSION 3.13)
 
-set(CMAKE_CXX_FLAGS "-pthread")
+include_directories(../src)
 
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
+# aux_source_directory(. Tests)
 
-include_directories(../include)
+# foreach(testfile ${Tests})
+#    get_filename_component(testname ${testfile} NAME_WE)
+#    add_executable(${testname} ${testfile})
+#    target_link_libraries(${testname} Log)
+# endforeach(testfile)
 
-link_directories(${PROJECT_SOURCE_DIR}/lib)
-
-aux_source_directory(. Tests)
-
-foreach(testfile ${Tests})
-    get_filename_component(testname ${testfile} NAME_WE)
-    add_executable(${testname} ${testfile})
-    target_link_libraries(${testname} Log)
-endforeach(testfile)
+add_executable(endiantest xmendianTest.c)
+target_link_libraries(endiantest RedisStudy)

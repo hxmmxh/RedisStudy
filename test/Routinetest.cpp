@@ -1,4 +1,8 @@
 #include <iostream>
+#include <stdint.h>
+
+#define LITTLE_ENDIAN 1234
+#define BYTE_ORDER LITTLE_ENDIAN
 
 using namespace std;
 
@@ -19,10 +23,8 @@ void f(B &b)
     b.val = a;
 }
 
-
 int main()
 {
-    B b;
-    f(b);
-    cout << b.val.v;
+    if (BYTE_ORDER == LITTLE_ENDIAN)
+        cout << 2;
 }
