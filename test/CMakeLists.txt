@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.13)
+cmake_minimum_required (VERSION 3.10)
 
 include_directories(../src)
 
@@ -10,5 +10,5 @@ include_directories(../src)
 #    target_link_libraries(${testname} Log)
 # endforeach(testfile)
 
-add_executable(endiantest xmendianTest.c)
+add_executable(endiantest endianconvTest.c)
 target_link_libraries(endiantest RedisStudy)
