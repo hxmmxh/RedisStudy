@@ -1,8 +1,10 @@
 #include "xmsds.h"
 #include "xmmalloc.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 sds sdsnewlen(const void *init, size_t initlen)
 {

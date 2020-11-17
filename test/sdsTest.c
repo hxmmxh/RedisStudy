@@ -1,6 +1,8 @@
 #include "test.h"
 #include "xmsds.h"
 
+#include <string.h>
+
 int main()
 {
     sdshdr *sh;

@@ -47,7 +47,6 @@ void sdsclear(sds s);
 // 将sds扩充至指定长度，新增的内容以 0 字节填充
 sds sdsgrowzero(sds s, size_t len);
 
-sds sdsMakeRoomFor(sds s, size_t addlen);
 // 回收空闲空间，即free会变回0，并会释放空间
 sds sdsRemoveFreeSpace(sds s);
 // 返回给定 sds 分配的内存字节数,整个shshdr占用的空间
