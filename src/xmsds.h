@@ -50,7 +50,6 @@ void sdsclear(sds s);
 
 // 将sds扩充至指定长度，新增的内容以 0 字节填充
 sds sdsgrowzero(sds s, size_t len);
-// 进行扩展,确保buf能放下addlen+len长的字符串
 sds sdsMakeRoomFor(sds s, size_t addlen);
 // 回收空闲空间，即free会变回0，并会释放空间
 sds sdsRemoveFreeSpace(sds s);

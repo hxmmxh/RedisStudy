@@ -3,6 +3,8 @@
 #include <math.h>
 #include <limits.h>
 
+#include <string.h>
+
 int main()
 {
     sdshdr *sh;
