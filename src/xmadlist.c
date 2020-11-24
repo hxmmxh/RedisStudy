@@ -118,7 +118,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after)
     return list;
 }
 
-void listDelNode(list *list, listNode *node);
+void listDelNode(list *list, listNode *node)
 {
     if (node->prev != NULL)
         node->prev->next = node->next;

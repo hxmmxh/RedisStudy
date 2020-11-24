@@ -46,4 +46,6 @@ int main()
     node = listIndex(l, 0);
     listDelNode(l, node);
     printlist(l);
+
+    test_report();
 }
