@@ -3,13 +3,14 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 sds sdsnewlen(const void *init, size_t initlen)
 {
     sdshdr *sh;
     if (init)
     {
-        // +1是为了结尾的'\0'字符
+        // +1是为了结尾的'\0'字符,下面会填充内存，所以这里不需要初始化为0
         sh = xm_malloc(sizeof(sdshdr) + initlen + 1);
     }
     else
@@ -65,14 +66,13 @@ void sdsclear(sds s)
     sh->buf[0] = '\0';
 }
 
-// 进行扩展,确保buf能放下addlen+len长的字符串
-static sds sdsMakeRoomFor(sds s, size_t addlen)
+
+sds sdsMakeRoomFor(sds s, size_t addlen)
 {
     size_t free = sdsavail(s);
     // s目前的空余空间已经足够，无须再进行扩展，直接返回
     if (free >= addlen)
         return s;
-
     size_t len = sdslen(s);
     sdshdr *sh = (sdshdr *)(void *)(s - sizeof(sdshdr));
     // s 最少需要的长度
@@ -307,7 +307,7 @@ static int sdsll2str(char *s, long long value)
     p = s;
     do
     {
-        *p++ = '0' + (v % 10);//等同于*p=  , p++
+        *p++ = '0' + (v % 10); //等同于*p=  , p++
         v /= 10;
     } while (v);
     if (value < 0)
@@ -360,5 +360,331 @@ sds sdsfromlonglong(long long value)
     char buf[SDS_LLSTR_SIZE];
     int len = sdsll2str(buf, value);
     return sdsnewlen(buf, len);
+}
+
+static sds sdscatvprintf(sds s, const char *fmt, va_list ap)
+{
+    va_list cpy;
+    char staticbuf[1024], *buf = staticbuf, *t;
+    // ？
+    size_t buflen = strlen(fmt) * 2;
+
+    if (buflen > sizeof(staticbuf))
+    {
+        buf = zmalloc(buflen);
+        if (buf == NULL)
+            return NULL;
+    }
+    else
+    {
+        buflen = sizeof(staticbuf);
+    }
+
+    while (1)
+    {
+        //vsnprintf会在数组的尾端自动加上一个\0字节，所以这里把数组的倒数第二个字节设为'\0'？？
+        buf[buflen - 2] = '\0';
+        va_copy(cpy, ap);
+        vsnprintf(buf, buflen, fmt, cpy);
+        // 每次分配失败，都会把buf的空间增加到两倍
+        if (buf[buflen - 2] != '\0')
+        {
+            if (buf != staticbuf)
+                zfree(buf);
+            buflen *= 2;
+            buf = zmalloc(buflen);
+            if (buf == NULL)
+                return NULL;
+            continue;
+        }
+        break;
+    }
+
+    t = sdscat(s, buf);
+    if (buf != staticbuf)
+        zfree(buf);
+    return t;
+}
+
+sds sdscatprintf(sds s, const char *fmt, ...)
+{
+    va_list ap;
+    char *t;
+    va_start(ap, fmt);
+    t = sdscatvprintf(s, fmt, ap);
+    va_end(ap);
+    return t;
+}
+
+/*
+ * %s - C String C字符串
+ * %S - SDS string sds字符串
+ * %i - signed int 有符号整数
+ * %I - 64 bit signed integer (long long, int64_t) 64位的整数
+ * %u - unsigned int 无符号整数
+ * %U - 64 bit unsigned integer (unsigned long long, uint64_t) 64位的无符号整数
+ * %% - Verbatim "%" character. %字符
+*/
+
+sds sdscatfmt(sds s, char const *fmt, ...)
+{
+    sdshdr *sh = (void *)(s - (sizeof(struct sdshdr)));
+    size_t initlen = sdslen(s);
+    const char *f = fmt;
+    int i;
+    va_list ap;
+
+    va_start(ap, fmt);
+    f = fmt;     //指向下一个要处理的fmt中的字符
+    i = initlen; //要写入的sds中的插入位置
+    while (*f)
+    {
+        char next, *str;
+        size_t l;
+        long long num;
+        unsigned long long unum;
+
+        // 保证sds中还能再追加一个字符
+        if (sh->free == 0)
+        {
+            s = sdsMakeRoomFor(s, 1);
+            sh = (void *)(s - (sizeof(struct sdshdr)));
+        }
+
+        switch (*f)
+        {
+        //如果是%,说明后面跟着的是控制字符
+        case '%':
+            next = *(f + 1);
+            f++;
+            switch (next)
+            {
+                // 打印字符串
+            case 's':
+            case 'S':
+                str = va_arg(ap, char *);
+                l = (next == 's') ? strlen(str) : sdslen(str);
+                if (sh->free < l)
+                {
+                    s = sdsMakeRoomFor(s, l);
+                    sh = (void *)(s - (sizeof(struct sdshdr)));
+                }
+                memcpy(s + i, str, l);
+                sh->len += l;
+                sh->free -= l;
+                i += l;
+                break;
+            //打印整数
+            case 'i':
+            case 'I':
+                if (next == 'i')
+                    num = va_arg(ap, int);
+                else
+                    num = va_arg(ap, long long);
+                {
+                    char buf[SDS_LLSTR_SIZE];
+                    // 把数字转化成字符串
+                    l = sdsll2str(buf, num);
+                    if (sh->free < l)
+                    {
+                        s = sdsMakeRoomFor(s, l);
+                        sh = (void *)(s - (sizeof(struct sdshdr)));
+                    }
+                    memcpy(s + i, buf, l);
+                    sh->len += l;
+                    sh->free -= l;
+                    i += l;
+                }
+                break;
+            // 打印无符号整数
+            case 'u':
+            case 'U':
+                if (next == 'u')
+                    unum = va_arg(ap, unsigned int);
+                else
+                    unum = va_arg(ap, unsigned long long);
+                {
+                    char buf[SDS_LLSTR_SIZE];
+                    l = sdsull2str(buf, unum);
+                    if (sh->free < l)
+                    {
+                        s = sdsMakeRoomFor(s, l);
+                        sh = (void *)(s - (sizeof(struct sdshdr)));
+                    }
+                    memcpy(s + i, buf, l);
+                    sh->len += l;
+                    sh->free -= l;
+                    i += l;
+                }
+                break;
+            // 其他值
+            default:
+                s[i++] = next;
+                sh->len += 1;
+                sh->free -= 1;
+                break;
+            }
+            break;
+        default:
+            s[i++] = *f;
+            sh->len += 1;
+            sh->free -= 1;
+            break;
+        }
+        f++;
+    }
+    va_end(ap);
+    // 在结尾加上\0
+    s[i] = '\0';
+    return s;
+}
+
+sds *sdssplitlen(const char *s, int len, const char *sep, int seplen, int *count)
+{
+    //先预估要分配5个sds节点，防止频繁扩展空间
+    int elements = 0, slots = 5, start = 0, j;
+    sds *tokens;
+
+    if (seplen < 1 || len < 0)
+        return NULL;
+
+    tokens = xm_malloc(sizeof(sds) * slots);
+    if (tokens == NULL)
+        return NULL;
+
+    if (len == 0)
+    {
+        *count = 0;
+        return tokens;
+    }
+    // 并不需要查找到最后一个字符，如果距离末尾的长度小于分隔符的长度，就已经可以停下了
+    for (j = 0; j < (len - (seplen - 1)); j++)
+    {
+        // 保证节点还可以容纳下一个节点以及结尾的节点
+        if (slots < elements + 2)
+        {
+            sds *newtokens;
+            // 空间预分配，多分配一些空间
+            slots *= 2;
+            newtokens = xm_realloc(tokens, sizeof(sds) * slots);
+            // 分配错误后记得清除之前已经分配的空间
+            if (newtokens == NULL)
+                goto cleanup;
+            tokens = newtokens;
+        }
+        // 查找分隔符
+        if ((seplen == 1 && *(s + j) == sep[0]) || (memcmp(s + j, sep, seplen) == 0))
+        {
+            // start表示上一个分隔符后的第一个字符
+            tokens[elements] = sdsnewlen(s + start, j - start);
+            if (tokens[elements] == NULL)
+                goto cleanup;
+            elements++;
+            start = j + seplen;
+            // 因为for()里还有个j++，所以这里j = j+seplen-1
+            j = j + seplen - 1;
+        }
+    }
+    // 加入最后一个元素
+    tokens[elements] = sdsnewlen(s + start, len - start);
+    if (tokens[elements] == NULL)
+        goto cleanup;
+    elements++;
+    *count = elements;
+    return tokens;
+
+cleanup:
+{
+    int i;
+    for (i = 0; i < elements; i++)
+        sdsfree(tokens[i]);
+    xm_free(tokens);
+    *count = 0;
+    return NULL;
+}
+}
+
+void sdsfreesplitres(sds *tokens, int count)
+{
+    if (!tokens)
+        return;
+    while (count--)
+        sdsfree(tokens[count]);
+    xm_free(tokens);
+}
+
+sds sdscatrepr(sds s, const char *p, size_t len)
+{
+
+    s = sdscatlen(s, "\"", 1);
+
+    while (len--)
+    {
+        switch (*p)
+        {
+        case '\\':
+        case '"':
+            s = sdscatprintf(s, "\\%c", *p);
+            break;
+        case '\n':
+            s = sdscatlen(s, "\\n", 2);
+            break;
+        case '\r':
+            s = sdscatlen(s, "\\r", 2);
+            break;
+        case '\t':
+            s = sdscatlen(s, "\\t", 2);
+            break;
+        case '\a':
+            s = sdscatlen(s, "\\a", 2);
+            break;
+        case '\b':
+            s = sdscatlen(s, "\\b", 2);
+            break;
+        default:
+            if (isprint(*p))
+                s = sdscatprintf(s, "%c", *p);
+            else
+                //0表示添加前导0进行填充，2表示最小宽度
+                s = sdscatprintf(s, "\\x%02x", (unsigned char)*p);
+            break;
+        }
+        p++;
+    }
+
+    return sdscatlen(s, "\"", 1);
+}
+
+sds sdsmapchars(sds s, const char *from, const char *to, size_t setlen)
+{
+    size_t j, i, l = sdslen(s);
+    // 遍历输入字符串
+    for (j = 0; j < l; j++)
+    {
+        // 遍历映射
+        for (i = 0; i < setlen; i++)
+        {
+            // 替换字符串
+            if (s[j] == from[i])
+            {
+                s[j] = to[i];
+                break;
+            }
+        }
+    }
+    return s;
+}
+
+sds sdsjoin(char **argv, int argc, char *sep)
+{
+    sds join = sdsempty();
+    int j;
+    for (j = 0; j < argc; j++)
+    {
+        join = sdscat(join, argv[j]);
+        if (j != argc - 1)
+            join = sdscat(join, sep);
+    }
+    return join;
 }
 
