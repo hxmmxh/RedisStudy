@@ -1,30 +1,19 @@
 #include <iostream>
 #include <stdint.h>
 
-//#define LITTLE_ENDIAN 1234
-//#define BYTE_ORDER LITTLE_ENDIAN
-
 using namespace std;
 
-struct A
+void print(void *p)
 {
-    int v;
-};
-
-struct B
-{
-    A val;
-};
-
-void f(B &b)
-{
-    A a;
-    a.v = 1;
-    b.val = a;
+    cout << p << endl;
 }
 
 int main()
 {
-    //if (BYTE_ORDER == LITTLE_ENDIAN)
-       // cout << 2;
+    char *a = "hello",*b="hello",*c="hi";
+    void *p = a;
+    print(p);
+    print(a);
+    print(b);
+    print(c);
 }

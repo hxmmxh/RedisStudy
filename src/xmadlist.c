@@ -85,7 +85,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after)
     if ((node = xm_malloc(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
-
+    // 插到指定节点后面
     if (after)
     {
         node->prev = old_node;
@@ -95,6 +95,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after)
             list->tail = node;
         }
     }
+    // 插到前面
     else
     {
         node->next = old_node;
@@ -104,7 +105,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after)
             list->head = node;
         }
     }
-
+    // 这里才把node前后的节点给连上
     if (node->prev != NULL)
     {
         node->prev->next = node;
@@ -143,7 +144,6 @@ listIter *listGetIterator(list *list, int direction)
         iter->next = list->head;
     else
         iter->next = list->tail;
-
     iter->direction = direction;
     return iter;
 }
@@ -181,7 +181,7 @@ void listRewindTail(list *list, listIter *li)
 list *listDup(list *orig)
 {
     list *copy;
-    if ((list = xm_malloc(sizeof(*list))) == NULL)
+    if ((copy = listCreate()) == NULL)
         return NULL;
     listIter *iter;
     listNode *node;
@@ -220,7 +220,7 @@ list *listDup(list *orig)
     }
     // 别忘记释放迭代器
     listReleaseIterator(iter);
-    return copy
+    return copy;
 }
 
 void listRotate(list *list)
