@@ -27,8 +27,7 @@ int __test_num = 0;
                __test_num - __failed_tests, __failed_tests);          \
         if (__failed_tests)                                           \
         {                                                             \
-            printf("=== WARNING === We have failed tests here...\n"); \
-            exit(1);                                                  \
+            printf("=== WARNING === We have failed tests here...\n"); \                                                 
         }                                                             \
     } while (0)
 

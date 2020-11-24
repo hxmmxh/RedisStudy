@@ -374,7 +374,7 @@ static sds sdscatvprintf(sds s, const char *fmt, va_list ap)
 
     if (buflen > sizeof(staticbuf))
     {
-        buf = zmalloc(buflen);
+        buf = xm_malloc(buflen);
         if (buf == NULL)
             return NULL;
     }
@@ -393,9 +393,9 @@ static sds sdscatvprintf(sds s, const char *fmt, va_list ap)
         if (buf[buflen - 2] != '\0')
         {
             if (buf != staticbuf)
-                zfree(buf);
+                xm_free(buf);
             buflen *= 2;
-            buf = zmalloc(buflen);
+            buf = xm_malloc(buflen);
             if (buf == NULL)
                 return NULL;
             continue;
@@ -405,7 +405,7 @@ static sds sdscatvprintf(sds s, const char *fmt, va_list ap)
 
     t = sdscat(s, buf);
     if (buf != staticbuf)
-        zfree(buf);
+        xm_free(buf);
     return t;
 }
 

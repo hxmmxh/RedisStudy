@@ -31,8 +31,9 @@ typedef char *sds;
 
 // 下面是常用的API函数
 
-size_t sdslen(const sds s);
-size_t sdsavail(const sds s);
+// 声明和定义中都要加static
+static size_t sdslen(const sds s);
+static size_t sdsavail(const sds s);
 
 // 创建并返回一个sds
 sds sdsnew(const char *init);
