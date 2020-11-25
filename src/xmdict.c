@@ -1,8 +1,11 @@
 
 #include <stdlib.h>
+#include <ctype.h>
 #include <time.h>
-#include <xmmalloc.h>
-#include <xmdict.h>
+#include <limits.h>
+#include <assert.h>
+#include "xmmalloc.h"
+#include "xmdict.h"
 
 /* 通过 dictEnableResize() 和 dictDisableResize() 两个函数，
  * 程序可以手动地允许或阻止哈希表进行 rehash ，
@@ -35,6 +38,8 @@ static dictEntry *dictReplaceRaw(dict *d, void *key);
 static int dictGenericDelete(dict *d, const void *key, int nofree);
 // 翻转二进制字符
 static unsigned long rev(unsigned long v);
+static void _dictRehashStep(dict *d);
+
 
 dict *dictCreate(dictType *type, void *privDataPtr)
 {
@@ -883,7 +888,6 @@ unsigned int dictGenHashFunction(const void *key, int len)
 
     /* Mix 4 bytes at a time into the hash */
     const unsigned char *data = (const unsigned char *)key;
-
     while (len >= 4)
     {
         uint32_t k = *(uint32_t *)data;
