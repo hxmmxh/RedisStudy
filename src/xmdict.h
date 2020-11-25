@@ -69,7 +69,7 @@ typedef struct dict
     dictht ht[2];
     // rehash 索引,当 rehash 不在进行时，值为 -1
     int rehashidx;
-    // 目前正在运行的安全迭代器的数量,字典有安全迭代器的情况下不能进行 rehash 
+    // 目前正在运行的安全迭代器的数量,字典有安全迭代器的情况下不能进行 rehash
     int iterators;
 } dict;
 
@@ -91,16 +91,13 @@ typedef struct dictIterator
     //             所以需要一个额外的指针来保存下一节点的位置，
     //             从而防止指针丢失
     dictEntry *entry, *nextEntry;
-
-    long long fingerprint; /* unsafe iterator fingerprint for misuse detection */
+    // 用于验证使用迭代器使用前后字典是否发生了改变
+    long long fingerprint;
 } dictIterator;
-
-//遍历字典的函数
-typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 
 //下面7个函数都是调用 dictType结构里面的函数
 
-// 释放给定字典节点的值，entry的类型是dictEntry
+// 释放给定字典节点的值，entry的类型是dictEntry*
 #define dictFreeVal(d, entry)     \
     if ((d)->type->valDestructor) \
     (d)->type->valDestructor((d)->privdata, (entry)->v.val)
@@ -148,7 +145,7 @@ typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 #define dictCompareKeys(d, key1, key2) \
     (((d)->type->keyCompare) ? (d)->type->keyCompare((d)->privdata, key1, key2) : (key1) == (key2))
 
-// d的类型是dict,he的类型是dictEntry，ht的类型是dictht
+// d的类型是dict,he的类型是dictEntry*，ht的类型是dictht*
 // 计算给定键的哈希值
 #define dictHashKey(d, key) (d)->type->hashFunction(key)
 // 返回获取给定节点的键
@@ -166,51 +163,39 @@ typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 // 查看字典是否正在 rehash
 #define dictIsRehashing(ht) ((ht)->rehashidx != -1)
 
-//创建新的字典
+// 创建新的字典
 dict *dictCreate(dictType *type, void *privDataPtr);
-
-//扩展字典，使其大小为第一个大于等于 size 的 2 的 N 次方
+// 手动扩展字典，使其大小为第一个大于等于 size 的 2 的 N 次方
 int dictExpand(dict *d, unsigned long size);
-//给定字典,让它的已用节点数和字典大小之间的比率接近 1:1，且小于1：1
+// 给定字典,让它的已用节点数和字典大小之间的比率接近 1:1，且小于1：1
 int dictResize(dict *d);
-
-
-//尝试将给定键值对添加到字典中，只有给定键 key 不存在于字典时，添加操作才会成功,成功返回1失败返回0
+// 尝试将给定键值对添加到字典中，只有给定键 key 不存在于字典时，添加操作才会成功,成功返回1失败返回0
 int dictAdd(dict *d, void *key, void *val);
-//返回的是节点本身
-dictEntry *dictAddRaw(dict *d, void *key);
-//将给定的键值对添加到字典里面， 如果键已经存在于字典，那么用新值取代原有的值。键是新加的返回1，取代的返回0
+// 将给定的键值对添加到字典里面， 如果键已经存在于字典，那么用新值取代原有的值。键是新加的返回1，取代的返回0
 int dictReplace(dict *d, void *key, void *val);
-// key 已经存在，返回包含该 key 的字典节点， key 不存在则那么将 key 添加到字典再返回
-dictEntry *dictReplaceRaw(dict *d, void *key);
-
-//从字典中删除包含给定键的节点，并且调用键值的释放函数来删除键值
-//找到并成功删除返回 DICT_OK ，没找到则返回 DICT_ERR
+// 从字典中删除包含给定键的节点，并且调用键值的释放函数来删除键值
+// 找到并成功删除返回 DICT_OK ，没找到则返回 DICT_ERR
 int dictDelete(dict *d, const void *key);
-//不调用键值的释放函数来删除键值
+// 不调用键值的释放函数来删除键值
 int dictDeleteNoFree(dict *d, const void *key);
-//删除并释放整个字典
+// 删除并释放整个字典
 void dictRelease(dict *d);
-
-
-
-
-
-
+// 清空字典上的所有哈希表节点，并重置字典属性，不释放字典
+void dictEmpty(dict *d, void(callback)(void *));
 
 // 返回字典中包含键 key 的节点，找到返回节点，找不到返回 NULL
-dictEntry * dictFind(dict *d, const void *key);
+dictEntry *dictFind(dict *d, const void *key);
 // 获取包含给定键的节点的值,如果节点不为空，返回节点的值,否则返回 NULL
 void *dictFetchValue(dict *d, const void *key);
 
-
-
-
-//执行 N 步渐进式 rehash，返回 1 表示仍有键需要从 0 号哈希表移动到 1 号哈希表，返回 0 则表示所有键都已经迁移完毕。
+// 开启自动 rehash
+void dictEnableResize(void);
+// 关闭自动 rehash
+void dictDisableResize(void);
+// 执行 N 步渐进式 rehash，返回 1 表示仍有键需要从 0 号哈希表移动到 1 号哈希表，返回 0 则表示所有键都已经迁移完毕。
 int dictRehash(dict *d, int n);
-//在给定毫秒数内，以 100 步为单位，对字典进行 rehash
+// 在给定毫秒数内，以 100 步为单位，对字典进行 rehash
 int dictRehashMilliseconds(dict *d, int ms);
-
 
 //生成一个64位的fingerprint，可以认为每个字典的fingerprint都是独一无二的
 //在使用不安全的迭代器时，使用前后检查fingerprint是否发生了变化，如果变了则说明中途出现了非法的操作，导致字典发生了改变
@@ -223,7 +208,16 @@ dictIterator *dictGetSafeIterator(dict *d);
 dictEntry *dictNext(dictIterator *iter);
 //释放给定字典迭代器
 void dictReleaseIterator(dictIterator *iter);
-//
+//遍历字典的函数
+typedef void(dictScanFunction)(void *privdata, const dictEntry *de);
+/* 迭代给定字典中的元素，每个元素都用函数fn处理一次
+ * 使用这个函数的方法如下：
+    1）一开始，你使用 0 作为游标来调用函数，即把v设为0
+    2) 函数执行一步迭代操作，并返回一个下次迭代时使用的新游标。
+    3) 当函数返回的游标为 0 时，迭代完成。
+ * 在迭代从开始到结束期间，一直存在于字典的元素肯定会被迭代到， 但一个元素可能会被返回多次
+ * 一次迭代会返回多个元素（同一个桶中的）
+*/
 unsigned long dictScan(dict *d, unsigned long v, dictScanFunction *fn, void *privdata);
 
 //返回任意一个节点
@@ -231,17 +225,24 @@ dictEntry *dictGetRandomKey(dict *d);
 //返回任意count个节点
 int dictGetRandomKeys(dict *d, dictEntry **des, int count);
 
-
 //哈希函数种子的类型是unsigned int
 //设置哈希函数的种子
 void dictSetHashFunctionSeed(unsigned int initval);
 //获得哈希函数的种子
 unsigned int dictGetHashFunctionSeed(void);
+// 用于整数的哈希函数
+unsigned int dictIntHashFunction(unsigned int key);
+// 直接返回原值得哈希函数
+unsigned int dictIdentityHashFunction(unsigned int key);
 // MurmurHash2哈希函数
 unsigned int dictGenHashFunction(const void *key, int len);
 //另一种哈希函数
 unsigned int dictGenCaseHashFunction(const unsigned char *buf, int len);
 
+// void dictPrintStats(dict *d);
 
+// extern dictType dictTypeHeapStringCopyKey;
+// extern dictType dictTypeHeapStrings;
+// extern dictType dictTypeHeapStringCopyKeyValue;
 
 #endif
