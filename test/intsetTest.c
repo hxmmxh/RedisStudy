@@ -11,7 +11,9 @@ void intsetRepr(intset *is)
     int i;
     for (i = 0; i < intrev32ifbe(is->length); i++)
     {
-        printf("%lld\n", (uint64_t)_intsetGet(is, i));
+        uint64_t n;
+        intsetGet(is, i, &n);
+        printf("%lld\n", n);
     }
     printf("\n");
 }
@@ -87,6 +89,17 @@ void checkConsistency(intset *is)
             assert(i64[i] < i64[i + 1]);
         }
     }
+}
+
+// 返回适用于传入值 v 的编码方式
+static uint8_t _intsetValueEncoding(int64_t v)
+{
+    if (v < INT32_MIN || v > INT32_MAX)
+        return INTSET_ENC_INT64;
+    else if (v < INT16_MIN || v > INT16_MAX)
+        return INTSET_ENC_INT32;
+    else
+        return INTSET_ENC_INT16;
 }
 
 int main()
@@ -214,7 +227,7 @@ int main()
 
         start = usec();
         for (i = 0; i < num; i++)
-            intsetSearch(is, rand() % ((1 << bits) - 1), NULL);
+            intsetFind(is, rand() % ((1 << bits) - 1));
         printf("%ld lookups, %ld element set, %lldusec\n", num, size, usec() - start);
     }
 
