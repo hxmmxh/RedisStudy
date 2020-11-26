@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <limits.h>
 
 sds sdsnewlen(const void *init, size_t initlen)
 {

@@ -3,9 +3,10 @@
 #include "xmmalloc.h"
 
 #include <math.h>
-#include <time.h>
+#include <sys/time.h>
 #include <string.h>
 #include <stdio.h>
+#include <limits.h>
 
 // 返回微秒格式的 UNIX 时间
 // 1 秒 = 1 000 000 微秒
@@ -66,8 +67,8 @@ robj *createRawStringObject(char *ptr, size_t len)
 robj *createEmbeddedStringObject(char *ptr, size_t len)
 {
     //一起分配robj和sds的空间
-    robj *o = zmalloc(sizeof(robj) + sizeof(struct sdshdr) + len + 1);
-    //o+1会让o启动robj大小的距离
+    robj *o = xm_malloc(sizeof(robj) + sizeof(struct sdshdr) + len + 1);
+    //o+1会让o前进robj大小的距离
     struct sdshdr *sh = (void *)(o + 1);
 
     o->type = REDIS_STRING;
@@ -174,6 +175,7 @@ robj *dupStringObject(robj *o)
         printf("Wrong encoding.");
         break;
     }
+    return NULL;
 }
 
 void incrRefCount(robj *o)
@@ -188,6 +190,7 @@ void decrRefCount(robj *o)
         printf("decrRefCount against refcount <= 0");
 
     // 释放对象
+    /*
     if (o->refcount == 1)
     {
         switch (o->type)
@@ -207,6 +210,7 @@ void decrRefCount(robj *o)
         case REDIS_HASH:
             freeHashObject(o);
             break;
+            
         default:
             printf("Unknown object type");
             break;
@@ -217,6 +221,7 @@ void decrRefCount(robj *o)
     {
         o->refcount--;
     }
+    */
 }
 
 void decrRefCountVoid(void *o)
@@ -334,4 +339,3 @@ size_t stringObjectLen(robj *o)
         return ll2string(buf, 32, (long)o->ptr);
     }
 }
-

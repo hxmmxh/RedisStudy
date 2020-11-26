@@ -3,6 +3,8 @@
 #include "xmmalloc.h"
 #include "xmobject.h"
 
+#include <assert.h>
+
 // 创建一个层数为level的跳跃表节点，并将节点的成员对象设置为obj，分值设置为 score，随后返回
 static zskiplistNode *zslCreateNode(int level, double score, robj *obj);
 //释放给定的跳跃表节点
@@ -81,9 +83,6 @@ static int zslRandomLevel(void)
 
 zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj)
 {
-    //isnan() 判断是不是NAN值（not a number非法数字）
-    assert(!isnan(score));
-
     zskiplistNode *x;
     int i, level;
     //记录每一层中最接近插入点的rank值，越下层的值肯定更大，更接近于最后的值

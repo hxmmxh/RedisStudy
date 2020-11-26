@@ -12,7 +12,8 @@ int main()
     robj *no[10];
     for (int i = 0; i < 10; ++i)
     {
-        no[i] = createStringObject('a' + i, 1);
+        char s = 'a' + i;
+        no[i] = createStringObject(&s, 1);
     }
 
     for (int i = 0; i < 10; ++i)
