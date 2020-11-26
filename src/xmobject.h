@@ -66,12 +66,11 @@ robj *createStringObjectFromLongDouble(long double value);
 robj *dupStringObject(robj *o);
 
 int isObjectRepresentableAsLongLong(robj *o, long long *llongval);
+// 判断是否是字符编码
+#define sdsEncodedObject(objptr) \
+    (objptr->encoding == REDIS_ENCODING_RAW || objptr->encoding == REDIS_ENCODING_EMBSTR)
 
-
-
-
-
-
+/*
 robj *createListObject(void);
 robj *createZiplistObject(void);
 robj *createSetObject(void);
@@ -89,6 +88,7 @@ void freeHashObject(robj *o);
 robj *tryObjectEncoding(robj *o);
 robj *getDecodedObject(robj *o);
 size_t stringObjectLen(robj *o);
+*/
 
 // 为对象的引用计数增一
 void incrRefCount(robj *o);
@@ -99,4 +99,13 @@ void decrRefCountVoid(void *o);
 // 将对象的引用计数设为 0 ，但并不释放对象, 在将一个对象传入一个会增加引用计数的函数中时，非常有用
 robj *resetRefCount(robj *obj);
 
+//对比两个字符串对象
+int compareStringObjects(robj *a, robj *b);
+// 用strcoll函数对比两个字符串对象
+int collateStringObjects(robj *a, robj *b);
+/* 如果两个对象的值在字符串的形式上相等，那么返回 1 ， 否则返回 0 。
+比 (compareStringObject(a, b) == 0) 更快一些*/
+int equalStringObjects(robj *a, robj *b);
+// 返回字符串对象中字符串值的长度
+size_t stringObjectLen(robj *o);
 #endif

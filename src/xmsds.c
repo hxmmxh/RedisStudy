@@ -7,7 +7,6 @@
 #include <stdarg.h>
 #include <ctype.h>
 
-
 sds sdsnewlen(const void *init, size_t initlen)
 {
     sdshdr *sh;
@@ -68,7 +67,6 @@ void sdsclear(sds s)
     sh->len = 0;
     sh->buf[0] = '\0';
 }
-
 
 sds sdsMakeRoomFor(sds s, size_t addlen)
 {
@@ -691,3 +689,195 @@ sds sdsjoin(char **argv, int argc, char *sep)
     return join;
 }
 
+long long memtoll(const char *p, int *err)
+{
+    const char *u;
+    char buf[128];
+    long mul; //表示单位
+    long long val;
+    unsigned int digits;
+
+    if (err)
+        *err = 0;
+    // 查找第一个不是数字的字符
+    u = p;
+    if (*u == '-')
+        u++;
+    while (*u && isdigit(*u))
+        u++;
+    // 解析单位，strcasecmp用于忽略大小写比较字符串，相等则返回0
+    if (*u == '\0' || !strcasecmp(u, "b"))
+    {
+        mul = 1;
+    }
+    else if (!strcasecmp(u, "k"))
+    {
+        mul = 1000;
+    }
+    else if (!strcasecmp(u, "kb"))
+    {
+        mul = 1024;
+    }
+    else if (!strcasecmp(u, "m"))
+    {
+        mul = 1000 * 1000;
+    }
+    else if (!strcasecmp(u, "mb"))
+    {
+        mul = 1024 * 1024;
+    }
+    else if (!strcasecmp(u, "g"))
+    {
+        mul = 1000L * 1000 * 1000;
+    }
+    else if (!strcasecmp(u, "gb"))
+    {
+        mul = 1024L * 1024 * 1024;
+    }
+    else
+    {
+        if (err)
+            *err = 1;
+        mul = 1;
+    }
+    // 数字部分的长度
+    digits = u - p;
+    if (digits >= sizeof(buf))
+    {
+        if (err)
+            *err = 1;
+        return LLONG_MAX;
+    }
+    memcpy(buf, p, digits);
+    buf[digits] = '\0';
+    val = strtoll(buf, NULL, 10);
+    return val * mul;
+}
+
+int ll2string(char *s, size_t len, long long value)
+{
+    //longlong最长只有19位
+    char buf[32], *p;
+    unsigned long long v;
+    size_t l;
+
+    if (len == 0)
+        return 0;
+    v = (value < 0) ? -value : value;
+    p = buf + 31; //buf里的最后一个字符
+    do
+    {
+        *p-- = '0' + (v % 10);
+        v /= 10;
+    } while (v);
+    if (value < 0)
+        *p-- = '-';
+    p++; //此时p指向数字部分的第一个字符，包括-号
+    //得到有效字符串的长度
+    l = 32 - (p - buf);
+    //+1是为了结尾的\0字符
+    //如果不够长，发生截断
+    if (l + 1 > len)
+        l = len - 1;
+    memcpy(s, p, l);
+    s[l] = '\0';
+    return l;
+}
+
+int string2ll(const char *s, size_t slen, long long *value)
+{
+    const char *p = s;
+    size_t plen = 0;
+    int negative = 0;
+    unsigned long long v;
+
+    if (slen == 0)
+        return 0;
+
+    /* Special case: first and only digit is 0. */
+    if (slen == 1 && p[0] == '0')
+    {
+        if (value != NULL)
+            *value = 0;
+        return 1;
+    }
+
+    if (p[0] == '-')
+    {
+        negative = 1;
+        p++;
+        plen++;
+
+        // 如果只有负号，也是失败的
+        if (plen == slen)
+            return 0;
+    }
+
+    //不能以0开头，除非它就是0，也不存在-0
+    if (p[0] >= '1' && p[0] <= '9')
+    {
+        v = p[0] - '0';
+        p++;
+        plen++;
+    }
+    else if (p[0] == '0' && slen == 1)
+    {
+        *value = 0;
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+
+    while (plen < slen && p[0] >= '0' && p[0] <= '9')
+    {
+        // 这里只考虑v有没有溢出，具体要转换的字符串有没有溢出下面再来判断
+        if (v > (ULLONG_MAX / 10)) 
+            return 0;
+        v *= 10;
+
+        if (v > (ULLONG_MAX - (p[0] - '0'))) 
+            return 0;
+        v += p[0] - '0';
+
+        p++;
+        plen++;
+    }
+
+    // 如果还有剩余的字符，也是解析错误
+    if (plen < slen)
+        return 0;
+
+    if (negative)
+    {
+        //负溢出，不能直接-LLONG_MIN是因为变正后会溢出
+        if (v > ((unsigned long long)(-(LLONG_MIN + 1)) + 1)) 
+            return 0;
+        if (value != NULL)
+            *value = -v;
+    }
+    else
+    {
+        //正溢出
+        if (v > LLONG_MAX) 
+            return 0;
+        if (value != NULL)
+            *value = v;
+    }
+    return 1;
+}
+
+int string2l(const char *s, size_t slen, long *lval)
+{
+    long long llval;
+
+    if (!string2ll(s, slen, &llval))
+        return 0;
+
+    if (llval < LONG_MIN || llval > LONG_MAX)
+        return 0;
+
+    *lval = (long)llval;
+    return 1;
+}

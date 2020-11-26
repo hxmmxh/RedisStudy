@@ -118,5 +118,30 @@ static inline size_t sdsavail(const sds s)
     return sh->free;
 }
 
+//定义和声明在util.c中
+//int stringmatchlen(const char *p, int plen, const char *s, int slen, int nocase);
+//int stringmatch(const char *p, const char *s, int nocase);
+
+// 把以k m G等为单位的表示空间大小的值转化成整数，*err为1表示解析失败，为0表示成功
+long long memtoll(const char *p, int *err);
+// 如果len的长度不够会发生截断，返回最终的长度
+int ll2string(char *s, size_t len, long long value);
+// 返回1表示成功，0表示失败
+int string2ll(const char *s, size_t slen, long long *value);
+int string2l(const char *s, size_t slen, long *value);
+
+//int d2string(char *buf, size_t len, double value);
+//sds getAbsolutePath(char *filename);
+//int pathIsBaseName(char *path);
+
+
+
+
+
+
+
+
+
+
 #endif
 

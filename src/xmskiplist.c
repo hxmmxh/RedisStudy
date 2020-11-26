@@ -1,8 +1,17 @@
 #include "xmskiplist.h"
+#include "xmsds.h"
 #include "xmmalloc.h"
+#include "xmobject.h"
 
-// 创建一个层数为 level 的跳跃表节点，并将节点的成员对象设置为 obj ，分值设置为 score 。
-// 返回值为新创建的跳跃表节点
+// 创建一个层数为level的跳跃表节点，并将节点的成员对象设置为obj，分值设置为 score，随后返回
+static zskiplistNode *zslCreateNode(int level, double score, robj *obj);
+//释放给定的跳跃表节点
+static void zslFreeNode(zskiplistNode *node);
+// 返回一个随机值，用作新跳跃表节点的层数。
+static int zslRandomLevel(void);
+static void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update);
+/**************************************************/
+
 static zskiplistNode *zslCreateNode(int level, double score, robj *obj)
 {
     //还要分配Level[]的空间
@@ -34,7 +43,6 @@ zskiplist *zslCreate(void)
     return zsl;
 }
 
-//释放给定的跳跃表节点
 static void zslFreeNode(zskiplistNode *node)
 {
     //暂时先不实现释放对象的功能
@@ -59,7 +67,6 @@ void zslFree(zskiplist *zsl)
     xm_free(zsl);
 }
 
-// 返回一个随机值，用作新跳跃表节点的层数。
 // 返回值介乎 1 和 ZSKIPLIST_MAXLEVEL 之间（包含 ZSKIPLIST_MAXLEVEL）
 // 根据随机算法所使用的幂次定律，越大的值生成的几率越小
 static int zslRandomLevel(void)
@@ -80,7 +87,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj)
     zskiplistNode *x;
     int i, level;
     //记录每一层中最接近插入点的rank值，越下层的值肯定更大，更接近于最后的值
-    //最终 rank[0] 的值加一就是新节点的前置节点的排位
+    //最终 rank[0] 的值就是新节点的前置节点的排位
     unsigned int rank[ZSKIPLIST_MAXLEVEL];
     //记录每一层中最接近插入点的节点
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL];
@@ -91,7 +98,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj)
     {
         //当i=zsl->level-1 时说明才开始，从头开始查找
         //否则从上一层的位置处开始查找
-        rank[i] = i == (zsl->level - 1) ? 0 : rank[i + 1];
+        rank[i] = (i == (zsl->level - 1)) ? 0 : rank[i + 1];
         //沿着前进指针遍历跳跃表，找到最后一个小于插入值的节点
         while (x->level[i].forward &&
                //分值更小
@@ -99,7 +106,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj)
                 //或者分值相同，但成员对象较小
                 (x->level[i].forward->score == score && compareStringObjects(x->level[i].forward->obj, obj) < 0)))
         {
-            //更新tank[i]
+            //更新rank[i]
             rank[i] += x->level[i].span;
             //更新x
             x = x->level[i].forward;
@@ -131,6 +138,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj)
     // 创建新节点
     x = zslCreateNode(level, score, obj);
 
+    // 更新level比新节点低的前节点的属性
     // 将前面记录的指针指向新节点，并做相应的设置
     for (i = 0; i < level; i++)
     {
@@ -142,7 +150,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj)
         // update[i]->level[i].span是新节点插入之前前一个节点和后一个节点直接的距离
         // rank[0]-rank[i]+1 是第i层前一个节点和要插入的新节点直接的距离
         x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
-        // 更新新节点插入之后，沿途节点的 span 值
+        // 更新新节点插入之后，前面那个节点的 span 值
         // 其中的 +1 计算的是新节点
         update[i]->level[i].span = (rank[0] - rank[i]) + 1;
     }
@@ -216,7 +224,7 @@ int zslDelete(zskiplist *zsl, double score, robj *obj)
         while (x->level[i].forward &&
                //分值更小
                (x->level[i].forward->score < score ||
-                //或者分值相同，但成员对象较小
+                //或者分值相同，但成员对象较小，不同于zslGetRank用<=。是因为这里就是要记录前一个节点
                 (x->level[i].forward->score == score && compareStringObjects(x->level[i].forward->obj, obj) < 0)))
             // 沿着前进指针移动
             x = x->level[i].forward;
@@ -255,7 +263,7 @@ static int zslValueLteMax(double value, zrangespec *spec)
 }
 
 // 如果给定的分值范围包含在跳跃表的分值范围之内，那么返回 1 ，否则返回 0 。
-// 只用检查头尾节点就行
+// 只用检查头尾节点就行，因为跳跃表是有序的
 int zslIsInRange(zskiplist *zsl, zrangespec *range)
 {
     // 先排除总为空的范围值
@@ -275,10 +283,110 @@ int zslIsInRange(zskiplist *zsl, zrangespec *range)
     return 1;
 }
 
-zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range);
+zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range)
+{
+    //如果给定的范围就不在跳跃表的范围内，直接失败返回
+    if (!zslIsInRange(zsl, range))
+        return NULL;
+    zskiplistNode *x;
+    int i;
+    x = zsl->header;
+    // 从高层往低层查找，每找一层都会更新x
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+        // 当x的后一个对象大于范围中的最小值时，停止前进
+        while (x->level[i].forward &&
+               !zslValueGteMin(x->level[i].forward->score, range))
+            x = x->level[i].forward;
+    }
+    // 再前进一次，就得到了所要的对象
+    x = x->level[0].forward;
+    // 还需要确认x小于范围的最大值
+    // 前面调用zslIsInRange(zsl, range)只说明了跳跃表包含这个范围，没有保证一定有节点在这个范围内
+    if (!zslValueLteMax(x->score, range))
+        return NULL;
+    return x;
+}
 
-zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range);
+zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range)
+{
+    if (!zslIsInRange(zsl, range))
+        return NULL;
+    zskiplistNode *x;
+    int i;
+    x = zsl->header;
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+        // 当x的后一个对象大于范围中的最大值时，停止前进
+        while (x->level[i].forward &&
+               zslValueLteMax(x->level[i].forward->score, range))
+            x = x->level[i].forward;
+    }
+    if (!zslValueGteMin(x->score, range))
+        return NULL;
+    return x;
+}
 
-unsigned long zslGetRank(zskiplist *zsl, double score, robj *o);
+/* 如果没有包含给定分值和成员对象的节点，返回 0 ，否则返回排位。
+因为跳跃表的表头也被计算在内，所以返回的排位以 1 为起始值*/
+unsigned long zslGetRank(zskiplist *zsl, double score, robj *o)
+{
+    zskiplistNode *x;
+    unsigned long rank = 0;
+    int i;
 
-zskiplistNode *zslGetElementByRank(zskiplist *zsl, unsigned long rank);
+    x = zsl->header;
+    // 从高层往低层查找，每找一层都会更新x和rank
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+        // 当x的后一个对象小于要查找的对象时，继续前进
+        while (x->level[i].forward &&
+               (x->level[i].forward->score < score ||
+                // 比对分值
+                (x->level[i].forward->score == score &&
+                 // 比对成员对象，注意这里是<=0，所以会到x是要查找的值才停止
+                 // 和zslDelete不同，是因为这里是要找到指定的那个元素
+                 compareStringObjects(x->level[i].forward->obj, o) <= 0)))
+        {
+
+            // 累积跨越的节点数量，计算rank
+            rank += x->level[i].span;
+            // 沿着前进指针遍历跳跃表
+            x = x->level[i].forward;
+        }
+        // 此时x的后一个对像大于要查找的对象，只有x是可能的要找的对象
+        // 必须确保不仅分值相等，而且成员对象也要相等
+        if (x->obj && equalStringObjects(x->obj, o))
+        {
+            return rank;
+        }
+    }
+    // 没找到
+    return 0;
+}
+
+zskiplistNode *zslGetElementByRank(zskiplist *zsl, unsigned long rank)
+{
+    zskiplistNode *x;
+    unsigned long traversed = 0; // 统计rank
+    int i;
+
+    x = zsl->header;
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+        // 遍历跳跃表并累积越过的节点数量
+        while (x->level[i].forward && (traversed + x->level[i].span) <= rank)
+        {
+            traversed += x->level[i].span;
+            x = x->level[i].forward;
+        }
+        // 如果越过的节点数量已经等于 rank
+        // 那么说明已经到达要找的节点
+        if (traversed == rank)
+        {
+            return x;
+        }
+    }
+    // 没找到目标节点
+    return NULL;
+}

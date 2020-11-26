@@ -239,3 +239,99 @@ robj *resetRefCount(robj *obj)
     obj->refcount = 0;
     return obj;
 }
+
+/*
+strcoll()会依环境变量LC_COLLATE所指定的文字排列次序来比较s1和s2 字符串。
+strcmp是根据ASCII来比较2个串的.
+当LC_COLLATE为"POSIX"或"C"，strcoll()与strcmp()作用完全相同
+*/
+
+#define REDIS_COMPARE_BINARY (1 << 0)
+#define REDIS_COMPARE_COLL (1 << 1)
+// 比较两个字符串对象的大小
+int compareStringObjectsWithFlags(robj *a, robj *b, int flags)
+{
+    char bufa[128], bufb[128], *astr, *bstr;
+    size_t alen, blen, minlen;
+    if (a == b)
+        return 0;
+    // 指向字符串值，并在有需要时，将整数转换为字符串 a
+    if (sdsEncodedObject(a))
+    {
+        astr = a->ptr;
+        alen = sdslen(astr);
+    }
+    // 说明保存的是整数值
+    else
+    {
+        alen = ll2string(bufa, sizeof(bufa), (long)a->ptr);
+        astr = bufa;
+    }
+
+    // 同样处理字符串 b
+    if (sdsEncodedObject(b))
+    {
+        bstr = b->ptr;
+        blen = sdslen(bstr);
+    }
+    else
+    {
+        blen = ll2string(bufb, sizeof(bufb), (long)b->ptr);
+        bstr = bufb;
+    }
+    if (flags & REDIS_COMPARE_COLL)
+    {
+        return strcoll(astr, bstr);
+    }
+    else
+    {
+        int cmp;
+        minlen = (alen < blen) ? alen : blen;
+        cmp = memcmp(astr, bstr, minlen);
+        if (cmp == 0)
+            return alen - blen;
+        return cmp;
+    }
+}
+
+int compareStringObjects(robj *a, robj *b)
+{
+    return compareStringObjectsWithFlags(a, b, REDIS_COMPARE_BINARY);
+}
+
+int collateStringObjects(robj *a, robj *b)
+{
+    return compareStringObjectsWithFlags(a, b, REDIS_COMPARE_COLL);
+}
+
+int equalStringObjects(robj *a, robj *b)
+{
+
+    // 对象的编码为 INT ，直接对比值
+    // 这里避免了将整数值转换为字符串，所以效率更高
+    if (a->encoding == REDIS_ENCODING_INT &&
+        b->encoding == REDIS_ENCODING_INT)
+    {
+        return a->ptr == b->ptr;
+    }
+    // 进行字符串对象
+    else
+    {
+        return compareStringObjects(a, b) == 0;
+    }
+}
+
+size_t stringObjectLen(robj *o)
+{
+    if (sdsEncodedObject(o))
+    {
+        return sdslen(o->ptr);
+    }
+    // INT 编码，计算将这个值转换为字符串要多少字节,相当于返回它的长度
+    else
+    {
+        char buf[32];
+        return ll2string(buf, 32, (long)o->ptr);
+    }
+}
+

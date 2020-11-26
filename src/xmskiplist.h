@@ -2,21 +2,8 @@
 #define XM_SKIPLIST_H
 
 #include <stdlib.h>
+#include "xmobject.h"
 
-#define REDIS_LRU_BITS 24
-typedef struct redisObject
-{
-    // 类型
-    unsigned type : 4;
-    // 编码
-    unsigned encoding : 4;
-    // 对象最后一次被访问的时间
-    unsigned lru : REDIS_LRU_BITS; /* lru time (relative to server.lruclock) */
-    // 引用计数
-    int refcount;
-    // 指向实际值的指针
-    void *ptr;
-} robj;
 
 // 表示开区间/闭区间范围的结构
 typedef struct
@@ -30,8 +17,8 @@ typedef struct
 
 /************************************************************************************/
 
-#define ZSKIPLIST_MAXLEVEL 32 /* Should be enough for 2^32 elements */
-#define ZSKIPLIST_P 0.25      /* Skiplist P = 1/4 */
+#define ZSKIPLIST_MAXLEVEL 32 // 跳跃表的最大层数
+#define ZSKIPLIST_P 0.25  //用于随机获得新节点层数的函数，最大节点每高一层的概率为0.25
 
 //跳跃表节点
 typedef struct zskiplistNode
@@ -74,14 +61,16 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj);
 // 从跳跃表 zsl 中删除包含给定节点 score 并且带有指定对象 obj 的节点。删除成功返回1，失败返回0
 int zslDelete(zskiplist *zsl, double score, robj *obj);
 
-// 如果给定的分值范围包含在跳跃表的分值范围之内，那么返回 1 ，否则返回 0 
+// 如果给定的分值范围包含在跳跃表的分值范围之内，那么返回 1 ，否则返回 0
 int zslIsInRange(zskiplist *zsl, zrangespec *range);
 //返回 zsl 中第一个分值符合 range 中指定范围的节点,如果没有，返回NULL
 zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range);
 //返回 zsl 中最后一个分值符合 range 中指定范围的节点。如果没有，返回NULL
 zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range);
 
+// 返回包含给定成员和分值的节点在跳跃表中的排位,表头排位为0，返回的排位以 1 为起始值。
 unsigned long zslGetRank(zskiplist *zsl, double score, robj *o);
+//返回跳跃表在给定排位上的节点，排位的起始值为 1
 zskiplistNode *zslGetElementByRank(zskiplist *zsl, unsigned long rank);
 
 #endif
