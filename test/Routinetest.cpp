@@ -18,46 +18,7 @@ static unsigned long rev(unsigned long v)
 
 int main()
 {
-    size_t t = sizeof(unsigned long);
-    unsigned long mask = 0xf;
-    unsigned long i = 0;
-    do
-    {
-        i |= ~mask;
-        i = rev(i);
-        i++;
-        i = rev(i);
-        cout << i << ' ';
-    } while (i != 0);
-    cout << endl;
-    i = 1;
-    do
-    {
-        i |= ~mask;
-        i = rev(i);
-        i++;
-        i = rev(i);
-        cout << i << ' ';
-    } while (i != 0);
-    cout << endl;
-    i = 1;
-    mask = 0x3f;
-    do
-    {
-        i |= ~mask;
-        i = rev(i);
-        i++;
-        i = rev(i);
-        cout << i << ' ';
-    } while (i != 0);
-    /*
-    i |= ~mask;
-    printf("%lx ", i);
-    i = rev(i);
-    printf("%lx ", i);
-    i++;
-    printf("%lx ", i);
-    i = rev(i);
-    printf("%lx", i);
-    */
+    uint16_t i = UINT16_MAX;
+    i+=2;
+    cout << i;
 }
