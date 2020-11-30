@@ -117,6 +117,7 @@ int main()
               memcmp(y, "\"\\a\\n\\x00foo\\r\"", 15) == 0);
 
     {
+        int oldfree;
         sdsfree(x);
         x = sdsnew("0");
         sh = (void *)(x - (sizeof(struct sdshdr)));

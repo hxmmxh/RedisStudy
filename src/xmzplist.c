@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <limits.h>
+#include <assert.h>
 
 #include "xmmalloc.h"
 #include "xmzplist.h"
@@ -509,7 +510,7 @@ unsigned char *ziplistNew(void)
     // 1 字节是表末端 ZIP_END 的大小
     unsigned int bytes = ZIPLIST_HEADER_SIZE + 1;
     // 为表头和表末端分配空间
-    unsigned char *zl = zmalloc(bytes);
+    unsigned char *zl = xm_malloc(bytes);
     // 初始化表属性
     ZIPLIST_BYTES(zl) = intrev32ifbe(bytes);                     //初始值为11
     ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(ZIPLIST_HEADER_SIZE); //初始值为10
@@ -524,7 +525,7 @@ unsigned char *ziplistNew(void)
 static unsigned char *ziplistResize(unsigned char *zl, unsigned int len)
 {
     // 用 zrealloc ，扩展时不改变现有元素
-    zl = zrealloc(zl, len);
+    zl = xm_realloc(zl, len);
     // 更新 bytes 属性
     ZIPLIST_BYTES(zl) = intrev32ifbe(len);
     // 重新设置表末端
@@ -894,7 +895,7 @@ unsigned char *ziplistIndex(unsigned char *zl, int index)
         index = (-index) - 1;
         // 定位到表尾节点
         p = ZIPLIST_ENTRY_TAIL(zl);
-        // 如果列表不为空，那么。。。
+        // 如果列表不为空
         if (p[0] != ZIP_END)
         {
             // 从表尾向表头遍历

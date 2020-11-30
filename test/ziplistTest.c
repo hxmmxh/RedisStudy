@@ -4,47 +4,11 @@
 #include "xmendianconv.h"
 #include "xmsds.h"
 #include "xmadlist.h"
+#include "xmzplist.c"
 
 #include <sys/time.h>
-
-typedef struct zlentry
-{
-    // prevrawlen ：前置节点的长度
-    // prevrawlensize ：编码 prevrawlen 所需的字节大小
-    unsigned int prevrawlensize, prevrawlen;
-    // len ：当前节点值的长度
-    // lensize ：编码 len 所需的字节大小
-    unsigned int lensize, len;
-    // 当前节点 header 的大小
-    // 等于 prevrawlensize + lensize
-    unsigned int headersize;
-    // 当前节点值所使用的编码类型
-    unsigned char encoding;
-    // 指向当前节点的指针
-    unsigned char *p;
-} zlentry;
-
-static zlentry zipEntry(unsigned char *p)
-{
-    zlentry e;
-    // e.prevrawlensize 保存着编码前一个节点的长度所需的字节数
-    // e.prevrawlen 保存着前一个节点的长度
-    ZIP_DECODE_PREVLEN(p, e.prevrawlensize, e.prevrawlen);
-
-    // p + e.prevrawlensize 将指针移动到列表节点本身
-    // e.encoding 保存着节点值的编码类型
-    // e.lensize 保存着编码节点值长度所需的字节数
-    // e.len 保存着节点值的长度
-    ZIP_DECODE_LENGTH(p + e.prevrawlensize, e.encoding, e.lensize, e.len);
-
-    // 计算头结点的字节数
-    e.headersize = e.prevrawlensize + e.lensize;
-
-    // 记录指针
-    e.p = p;
-
-    return e;
-}
+#include <assert.h>
+#include <string.h>
 
 unsigned char *createList()
 {
@@ -175,11 +139,39 @@ void verify(unsigned char *zl, zlentry *e)
     for (i = 0; i < len; i++)
     {
         memset(&e[i], 0, sizeof(zlentry));
+        for (int j = 0; j < sizeof(zlentry); j++)
+        {
+            printf("%x ", ((unsigned char *)&e[i])[j]);
+        }
+        printf("\n");
         e[i] = zipEntry(ziplistIndex(zl, i));
 
         memset(&_e, 0, sizeof(zlentry));
+        for (int j = 0; j < sizeof(zlentry); j++)
+        {
+            printf("%x ", ((unsigned char *)&_e)[j]);
+        }
+        printf("\n");
         _e = zipEntry(ziplistIndex(zl, -len + i));
 
+        ziplistRepr(zl);
+
+        for (int j = 0; j < ziplistBlobLen(zl); j++)
+        {
+            printf("%x ", ((unsigned char *)zl)[j]);
+        }
+        printf("\n");
+        for (int j = 0; j < sizeof(zlentry); j++)
+        {
+            printf("%x ", ((unsigned char *)&e[i])[j]);
+        }
+
+        printf("\n");
+        for (int j = 0; j < sizeof(zlentry); j++)
+        {
+            printf("%x ", ((unsigned char *)&_e)[j]);
+        }
+        printf("\n");
         assert(memcmp(&e[i], &_e, sizeof(zlentry)) == 0);
     }
 }
@@ -542,7 +534,7 @@ int main(int argc, char **argv)
         {
             zl = ziplistPush(zl, (unsigned char *)v[i], strlen(v[i]), ZIPLIST_TAIL);
         }
-
+        //ziplistRepr(zl);
         verify(zl, e);
 
         assert(e[0].prevrawlensize == 1);
@@ -552,7 +544,7 @@ int main(int argc, char **argv)
         /* Deleting entry 1 will increase `prevrawlensize` for entry 2 */
         unsigned char *p = e[1].p;
         zl = ziplistDelete(zl, &p);
-
+        //ziplistRepr(zl);
         verify(zl, e);
 
         assert(e[0].prevrawlensize == 1);
@@ -699,17 +691,19 @@ int main(int argc, char **argv)
                 }
                 assert(memcmp(buf, listNodeValue(refnode), buflen) == 0);
             }
-            zfree(zl);
+            xm_free(zl);
             listRelease(ref);
         }
         printf("SUCCESS\n\n");
     }
 
+    /*
     printf("Stress with variable ziplist size:\n");
     {
         stress(ZIPLIST_HEAD, 100000, 16384, 256);
         stress(ZIPLIST_TAIL, 100000, 16384, 256);
     }
+        */
 
     return 0;
 }
