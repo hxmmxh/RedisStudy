@@ -748,7 +748,7 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
         // 如果 p[0] 不指向列表末端，说明列表非空，并且 p 正指向列表的其中一个节点
         // 那么取出 p 所指向节点的信息，并将它保存到 entry 结构中
         // 然后用 prevlen 变量记录前置节点的长度
-        // （当插入新节点之后 p的前置节点就成了新节点的前置节点）
+        // 当插入新节点之后 p的前置节点就成了新节点的前置节点
         entry = zipEntry(p);
         prevlen = entry.prevrawlen;
     }

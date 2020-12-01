@@ -3,13 +3,11 @@
 
 #include <stdlib.h>
 
-#include "xmsds.h"
-
 // Least Recently Used，和时间有关的宏和声明
-#define REDIS_LRU_BITS 24                               //表示时间的无符号整数的位数
-#define REDIS_LRU_CLOCK_MAX ((1 << REDIS_LRU_BITS) - 1) //时间的最大值
-#define REDIS_LRU_CLOCK_RESOLUTION 1000                 //时间的分辨率，单位为ms
-#define LRU_CLOCK() getLRUClock()                       //
+#define REDIS_LRU_BITS 24                               // 表示时间的无符号整数的位数
+#define REDIS_LRU_CLOCK_MAX ((1 << REDIS_LRU_BITS) - 1) // 时间的最大值
+#define REDIS_LRU_CLOCK_RESOLUTION 1000                 // 时间的分辨率，单位为ms
+#define LRU_CLOCK() getLRUClock()                       // 以后还需要修改
 unsigned int getLRUClock(void);
 
 // 对象结构的声明
@@ -21,6 +19,9 @@ typedef struct redisObject
     int refcount;                  // 引用计数
     void *ptr;                     // 指向实际值的指针
 } robj;
+
+#define REDIS_HEAD 0
+#define REDIS_TAIL 1
 
 // 对象类型
 #define REDIS_STRING 0
@@ -46,66 +47,37 @@ struct sharedObjects
 {
     robj *integers[REDIS_SHARED_INTEGERS]; //共享的 REDIS_ENCODING_INT编码的对象
 };
+// 共享对象
+struct sharedObjects shared;
 //创建共享对象，在服务器初始化时会调用
 void createSharedObjects(void);
 
 // 创建一个新的 robj 对象
 robj *createObject(int type, void *ptr);
-// 创建字符串对象
-robj *createStringObject(char *ptr, size_t len);
-// 创建一个 REDIS_ENCODING_RAW 编码的字符对象
-robj *createRawStringObject(char *ptr, size_t len);
-// 创建一个 REDIS_ENCODING_EMBSTR 编码的字符对象
-robj *createEmbeddedStringObject(char *ptr, size_t len);
-// 根据传入的整数值，创建一个字符串对象，底层编码是不定的
-robj *createStringObjectFromLongLong(long long value);
-// 根据传入的 long double 值，为它创建一个字符串对象，底层编码是不定的
-robj *createStringObjectFromLongDouble(long double value);
-/* 复制一个字符串对象，复制出的对象和输入对象拥有相同编码。输出对象的 refcount 总为 1 
- * 在复制一个包含整数值的字符串对象时，总是产生一个非共享的对象*/
-robj *dupStringObject(robj *o);
 
-int isObjectRepresentableAsLongLong(robj *o, long long *llongval);
-// 判断是否是字符编码
-#define sdsEncodedObject(objptr) \
-    (objptr->encoding == REDIS_ENCODING_RAW || objptr->encoding == REDIS_ENCODING_EMBSTR)
+// 检查对象 o 的类型是否和 type 相同：相同返回 0  不相同返回 1 ，并向客户端回复一个错误
+int checkType(/*redisClient *c, */robj *o, int type);
 
-/*
-robj *createListObject(void);
-robj *createZiplistObject(void);
-robj *createSetObject(void);
-robj *createIntsetObject(void);
-robj *createHashObject(void);
-robj *createZsetObject(void);
-robj *createZsetZiplistObject(void);
-
-void freeStringObject(robj *o);
-void freeListObject(robj *o);
-void freeSetObject(robj *o);
-void freeZsetObject(robj *o);
-void freeHashObject(robj *o);
-
-robj *tryObjectEncoding(robj *o);
-robj *getDecodedObject(robj *o);
-size_t stringObjectLen(robj *o);
-*/
 
 // 为对象的引用计数增一
 void incrRefCount(robj *o);
 // 为对象的引用计数减一,当对象的引用计数降为 0 时，释放对象
 void decrRefCount(robj *o);
-// 作用于特定数据结构的释放函数包装
+// 作用于特定数据结构的释放函数包装，用于传入一个需要void free_object(void*)类型的函数
 void decrRefCountVoid(void *o);
 // 将对象的引用计数设为 0 ，但并不释放对象, 在将一个对象传入一个会增加引用计数的函数中时，非常有用
 robj *resetRefCount(robj *obj);
 
-//对比两个字符串对象
-int compareStringObjects(robj *a, robj *b);
-// 用strcoll函数对比两个字符串对象
-int collateStringObjects(robj *a, robj *b);
-/* 如果两个对象的值在字符串的形式上相等，那么返回 1 ， 否则返回 0 。
-比 (compareStringObject(a, b) == 0) 更快一些*/
-int equalStringObjects(robj *a, robj *b);
-// 返回字符串对象中字符串值的长度
-size_t stringObjectLen(robj *o);
+
+// 返回编码的字符串表示
+char *strEncoding(int encoding);
+// 使用近似 LRU 算法，计算出给定对象的闲置时长,单位为ms
+unsigned long long estimateObjectIdleTime(robj *o);
+
+
+// OBJECT 命令的辅助函数，用于在不修改 LRU 时间的情况下，尝试获取 key 对象
+// robj *objectCommandLookup(/*redisClient *c,*/ robj *key);
+// robj *objectCommandLookupOrReply
+// void objectCommand(redisClient *c);
+
 #endif
