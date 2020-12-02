@@ -40,7 +40,6 @@ static int dictGenericDelete(dict *d, const void *key, int nofree);
 static unsigned long rev(unsigned long v);
 static void _dictRehashStep(dict *d);
 
-
 dict *dictCreate(dictType *type, void *privDataPtr)
 {
     dict *d;
@@ -118,6 +117,18 @@ int dictExpand(dict *d, unsigned long size)
         d->rehashidx = 0;
     }
     return DICT_OK;
+}
+
+int htNeedsResize(dict *dict)
+{
+    long long size, used;
+
+    size = dictSlots(dict);
+    used = dictSize(dict);
+    // size大于初始大小
+    // 并且负载因子小于0.1
+    return (size && used && size > DICT_HT_INITIAL_SIZE &&
+            (used * 100 / size < REDIS_HT_MINFILL));
 }
 
 int dictResize(dict *d)
@@ -523,6 +534,8 @@ dictIterator *dictGetIterator(dict *d)
     iter->safe = 0;
     iter->entry = NULL;
     iter->nextEntry = NULL;
+    // fingerprint在第一次调用dixtNext时设置，可以节约计算时间
+    // 毕竟有些迭代器可能从创建到使用有间隔
     return iter;
 }
 
@@ -758,7 +771,6 @@ static unsigned long rev(unsigned long v)
 
 
 */
-
 
 unsigned long dictScan(dict *d, unsigned long v, dictScanFunction *fn, void *privdata)
 {

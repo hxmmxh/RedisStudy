@@ -1,9 +1,167 @@
 #include "xmskiplist.h"
 #include "xmsds.h"
 #include "xmmalloc.h"
-#include "xmobject.h"
+
+#include "xmserver.h"
+
+#include "xmt_string.h"
 
 #include <assert.h>
+
+
+// 对比a，b对象表示的取值的大小
+// 返回0表示相等，1表示a>b，-1表示a<b
+int compareStringObjectsForLexRange(robj *a, robj *b)
+{
+    if (a == b)
+        return 0;
+    if (a == shared.minstring || b == shared.maxstring)
+        return -1;
+    if (a == shared.maxstring || b == shared.minstring)
+        return 1;
+    return compareStringObjects(a, b);
+}
+
+// 解析lex范围对象
+// (foo means foo (open interval)
+// [foo means foo (closed interval)
+// - means the min string possible，
+// + means the max string possible
+// *dest保存解析后的对象， ex保存是闭区间（0）还是开区间（1）
+int zslParseLexRangeItem(robj *item, robj **dest, int *ex)
+{
+    char *c = item->ptr;
+
+    switch (c[0])
+    {
+    case '+':
+        if (c[1] != '\0')
+            return REDIS_ERR;
+        *ex = 0;
+        *dest = shared.maxstring;
+        incrRefCount(shared.maxstring);
+        return REDIS_OK;
+    case '-':
+        if (c[1] != '\0')
+            return REDIS_ERR;
+        *ex = 0;
+        *dest = shared.minstring;
+        incrRefCount(shared.minstring);
+        return REDIS_OK;
+    case '(':
+        *ex = 1;
+        *dest = createStringObject(c + 1, sdslen(c) - 1);
+        return REDIS_OK;
+    case '[':
+        *ex = 0;
+        *dest = createStringObject(c + 1, sdslen(c) - 1);
+        return REDIS_OK;
+    default:
+        return REDIS_ERR;
+    }
+}
+
+// 解析lex范围结构，成功返回REDIS_OK,且之后必须释放lex范围结构
+static int zslParseLexRange(robj *min, robj *max, zlexrangespec *spec)
+{
+    // 如果是整数编码，肯定解析失败
+    if (min->encoding == REDIS_ENCODING_INT ||
+        max->encoding == REDIS_ENCODING_INT)
+        return REDIS_ERR;
+
+    spec->min = spec->max = NULL;
+
+    if (zslParseLexRangeItem(min, &spec->min, &spec->minex) == REDIS_ERR ||
+        zslParseLexRangeItem(max, &spec->max, &spec->maxex) == REDIS_ERR)
+    {
+        // 如果解析失败，记得要decr
+        if (spec->min)
+            decrRefCount(spec->min);
+        if (spec->max)
+            decrRefCount(spec->max);
+        return REDIS_ERR;
+    }
+    else
+    {
+        return REDIS_OK;
+    }
+}
+
+// 释放Lex范围结构
+// 在调用zelParseLexRange成功后必须调用这个函数
+void zslFreeLexRange(zlexrangespec *spec)
+{
+    decrRefCount(spec->min);
+    decrRefCount(spec->max);
+}
+
+// 对 min 和 max 进行分析，并将区间的值保存在 spec 中。
+// 分析成功返回 REDIS_OK ，分析出错导致失败返回 REDIS_ERR
+static int zslParseRange(robj *min, robj *max, zrangespec *spec)
+{
+    char *eptr;
+
+    // 默认为闭区间
+    spec->minex = spec->maxex = 0;
+
+    /* Parse the min-max interval. If one of the values is prefixed
+     * by the "(" character, it's considered "open". For instance
+     * ZRANGEBYSCORE zset (1.5 (2.5 will match min < x < max
+     * ZRANGEBYSCORE zset 1.5 2.5 will instead match min <= x <= max */
+    // 没有[]表示闭区间
+    if (min->encoding == REDIS_ENCODING_INT)
+    {
+        // min 的值为整数
+        spec->min = (long)min->ptr;
+    }
+    else
+    {
+        // min 对象为字符串，分析 min 的值并决定区间
+        if (((char *)min->ptr)[0] == '(')
+        {
+            // double strtod(const char *str, char **endptr)
+            // 把参数 str 所指向的字符串转换为一个浮点数（类型为 double 型）。
+            // 如果 endptr 不为空，则指向转换中最后一个字符后的字符的指针会存储在 endptr 引用的位置。
+            spec->min = strtod((char *)min->ptr + 1, &eptr);
+            if (eptr[0] != '\0' || isnan(spec->min))
+                return REDIS_ERR;
+            spec->minex = 1;
+        }
+        else
+        {
+            spec->min = strtod((char *)min->ptr, &eptr);
+            if (eptr[0] != '\0' || isnan(spec->min))
+                return REDIS_ERR;
+        }
+    }
+
+    if (max->encoding == REDIS_ENCODING_INT)
+    {
+        // max 的值为整数
+        spec->max = (long)max->ptr;
+    }
+    else
+    {
+        // max 对象为字符串，分析 max 的值并决定区间
+        if (((char *)max->ptr)[0] == '(')
+        {
+            spec->max = strtod((char *)max->ptr + 1, &eptr);
+            if (eptr[0] != '\0' || isnan(spec->max))
+                return REDIS_ERR;
+            spec->maxex = 1;
+        }
+        else
+        {
+            spec->max = strtod((char *)max->ptr, &eptr);
+            if (eptr[0] != '\0' || isnan(spec->max))
+                return REDIS_ERR;
+        }
+    }
+
+    return REDIS_OK;
+}
+
+/*************************************************************/
 
 // 创建一个层数为level的跳跃表节点，并将节点的成员对象设置为obj，分值设置为 score，随后返回
 static zskiplistNode *zslCreateNode(int level, double score, robj *obj);
@@ -45,10 +203,9 @@ zskiplist *zslCreate(void)
     return zsl;
 }
 
-static void zslFreeNode(zskiplistNode *node)
+void zslFreeNode(zskiplistNode *node)
 {
-    //暂时先不实现释放对象的功能
-    //decrRefCount(node->obj);
+    decrRefCount(node->obj);
     //level这个数组的空间不是额外分配的，不需要另外释放
     xm_free(node);
 }
@@ -247,18 +404,30 @@ int zslDelete(zskiplist *zsl, double score, robj *obj)
     return 0;
 }
 
-//检测给定值 value 是否大于（或大于等于）范围 spec 中的 min 项，返回1表明大于
-//minex为1表示不包含最小值，必须大于
-static int zslValueGteMin(double value, zrangespec *spec)
+
+// minex为1表示不包含最小值，必须大于
+int zslValueGteMin(double value, zrangespec *spec)
 {
     return spec->minex ? (value > spec->min) : (value >= spec->min);
 }
 
-//检测给定值 value 是否小于（或小于等于）范围 spec 中的 max 项
-//maxex为1表示不包含最大值，必须小于
-static int zslValueLteMax(double value, zrangespec *spec)
+// 检测给定值 value 是否小于（或小于等于）范围 spec 中的 max 项
+// maxex为1表示不包含最大值，必须小于
+int zslValueLteMax(double value, zrangespec *spec)
 {
     return spec->maxex ? (value < spec->max) : (value <= spec->max);
+}
+
+// 判断value保存的对象表示的范围是否大于spec的范围的最小值
+int zslLexValueGteMin(robj *value, zlexrangespec *spec)
+{
+    return spec->minex ? (compareStringObjectsForLexRange(value, spec->min) > 0) : (compareStringObjectsForLexRange(value, spec->min) >= 0);
+}
+
+// 判断value保存的对象表示的范围是否小于spec的范围的最大值
+int zslLexValueLteMax(robj *value, zlexrangespec *spec)
+{
+    return spec->maxex ? (compareStringObjectsForLexRange(value, spec->max) < 0) : (compareStringObjectsForLexRange(value, spec->max) <= 0);
 }
 
 // 如果给定的分值范围包含在跳跃表的分值范围之内，那么返回 1 ，否则返回 0 。
@@ -282,9 +451,28 @@ int zslIsInRange(zskiplist *zsl, zrangespec *range)
     return 1;
 }
 
+int zslIsInLexRange(zskiplist *zsl, zlexrangespec *range)
+{
+    zskiplistNode *x;
+    // 先排除总为空的范围值
+    if (compareStringObjectsForLexRange(range->min, range->max) > 1 ||
+        (compareStringObjects(range->min, range->max) == 0 &&
+         (range->minex || range->maxex)))
+        return 0;
+
+    x = zsl->tail;
+
+    if (x == NULL || !zslLexValueGteMin(x->obj, range))
+        return 0;
+    x = zsl->header->level[0].forward;
+    if (x == NULL || !zslLexValueLteMax(x->obj, range))
+        return 0;
+    return 1;
+}
+
 zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range)
 {
-    //如果给定的范围就不在跳跃表的范围内，直接失败返回
+    // 如果给定的范围就不在跳跃表的范围内，直接失败返回
     if (!zslIsInRange(zsl, range))
         return NULL;
     zskiplistNode *x;
@@ -307,6 +495,31 @@ zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range)
     return x;
 }
 
+zskiplistNode *zslFirstInLexRange(zskiplist *zsl, zlexrangespec *range)
+{
+    zskiplistNode *x;
+    int i;
+
+    // 如果给定的范围就不在跳跃表的范围内，直接失败返回
+    if (!zslIsInLexRange(zsl, range))
+        return NULL;
+
+    x = zsl->header;
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+        // 当x的后一个对象大于范围中的最小值时，停止前进
+        while (x->level[i].forward &&
+               !zslLexValueGteMin(x->level[i].forward->obj, range))
+            x = x->level[i].forward;
+    }
+
+    x = x->level[0].forward;
+
+    if (!zslLexValueLteMax(x->obj, range))
+        return NULL;
+    return x;
+}
+
 zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range)
 {
     if (!zslIsInRange(zsl, range))
@@ -322,6 +535,30 @@ zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec *range)
             x = x->level[i].forward;
     }
     if (!zslValueGteMin(x->score, range))
+        return NULL;
+    return x;
+}
+
+zskiplistNode *zslLastInLexRange(zskiplist *zsl, zlexrangespec *range)
+{
+    zskiplistNode *x;
+    int i;
+
+    if (!zslIsInLexRange(zsl, range))
+        return NULL;
+
+    x = zsl->header;
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+
+        while (x->level[i].forward &&
+               zslLexValueLteMax(x->level[i].forward->obj, range))
+            x = x->level[i].forward;
+    }
+
+    redisAssert(x != NULL);
+
+    if (!zslLexValueGteMin(x->obj, range))
         return NULL;
     return x;
 }
@@ -388,4 +625,119 @@ zskiplistNode *zslGetElementByRank(zskiplist *zsl, unsigned long rank)
     }
     // 没找到目标节点
     return NULL;
+}
+
+unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec *range, dict *dict)
+{
+    zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
+    unsigned long removed = 0;
+    int i;
+
+    // 记录所有和被删除节点（们）有关的节点
+    x = zsl->header;
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+        while (x->level[i].forward && (range->minex ? x->level[i].forward->score <= range->min : x->level[i].forward->score < range->min))
+            x = x->level[i].forward;
+        update[i] = x;
+    }
+
+    // 定位到给定范围开始的第一个节点
+    x = x->level[0].forward;
+
+    // 删除范围中的所有节点
+    while (x &&
+           (range->maxex ? x->score < range->max : x->score <= range->max))
+    {
+        // 记录下个节点的指针
+        zskiplistNode *next = x->level[0].forward;
+        zslDeleteNode(zsl, x, update);
+        dictDelete(dict, x->obj);
+        zslFreeNode(x);
+        removed++;
+        x = next;
+    }
+    return removed;
+}
+
+unsigned long zslDeleteRangeByLex(zskiplist *zsl, zlexrangespec *range, dict *dict)
+{
+    zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
+    unsigned long removed = 0;
+    int i;
+
+    x = zsl->header;
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+        while (x->level[i].forward &&
+               !zslLexValueGteMin(x->level[i].forward->obj, range))
+            x = x->level[i].forward;
+        update[i] = x;
+    }
+
+    x = x->level[0].forward;
+
+    while (x && zslLexValueLteMax(x->obj, range))
+    {
+        zskiplistNode *next = x->level[0].forward;
+
+        // 从跳跃表中删除当前节点
+        zslDeleteNode(zsl, x, update);
+        // 从字典中删除当前节点
+        dictDelete(dict, x->obj);
+        // 释放当前跳跃表节点的结构
+        zslFreeNode(x);
+
+        // 增加删除计数器
+        removed++;
+
+        // 继续处理下个节点
+        x = next;
+    }
+
+    // 返回被删除节点的数量
+    return removed;
+}
+
+unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned int end, dict *dict)
+{
+    zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
+    unsigned long traversed = 0, removed = 0;
+    int i;
+
+    // 沿着前进指针移动到指定排位的起始位置，并记录所有沿途指针
+    x = zsl->header;
+    for (i = zsl->level - 1; i >= 0; i--)
+    {
+        while (x->level[i].forward && (traversed + x->level[i].span) < start)
+        {
+            traversed += x->level[i].span;
+            x = x->level[i].forward;
+        }
+        update[i] = x;
+    }
+
+    // 移动到排位的起始的第一个节点
+    traversed++;
+    x = x->level[0].forward;
+    // 删除所有在给定排位范围内的节点
+    while (x && traversed <= end)
+    {
+        // 记录下一节点的指针
+        zskiplistNode *next = x->level[0].forward;
+        // 从跳跃表中删除节点
+        zslDeleteNode(zsl, x, update);
+        // 从字典中删除节点
+        dictDelete(dict, x->obj);
+        // 释放节点结构
+        zslFreeNode(x);
+        // 为删除计数器增一
+        removed++;
+        // 为排位计数器增一
+        traversed++;
+        // 处理下个节点
+        x = next;
+    }
+    // 返回被删除节点的数量
+    return removed;
 }

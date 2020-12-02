@@ -29,9 +29,11 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval);
 #define sdsEncodedObject(objptr) \
     (objptr->encoding == REDIS_ENCODING_RAW || objptr->encoding == REDIS_ENCODING_EMBSTR)
 
-// 尝试对字符串对象进行编码，以节约内存。会将可以编码成整数的字符串对象进行编码，并且还会清除字符串对象的free空间
+// 尝试对字符串对象进行编码，以节约内存。
+//会将可以编码成整数的字符串对象进行编码，会将符合条件的raw转换成embstr,并且还会清除字符串对象的free空间
 robj *tryObjectEncoding(robj *o);
 // 解码对象，将对象的值从整数转换为字符串,返回一个输入对象的解码版本（RAW 编码）
+// 每次通过这个函数给一个变量赋值时，记得在使用完后对该变量减一引用次数
 robj *getDecodedObject(robj *o);
 
 

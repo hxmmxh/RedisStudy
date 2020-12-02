@@ -257,13 +257,13 @@ static int compareStringObjectsWithFlags(robj *a, robj *b, int flags)
     size_t alen, blen, minlen;
     if (a == b)
         return 0;
-    // 指向字符串值，并在有需要时，将整数转换为字符串 a
+    // 指向字符串值
     if (sdsEncodedObject(a))
     {
         astr = a->ptr;
         alen = sdslen(astr);
     }
-    // 说明保存的是整数值
+    // 保存的是整数值，将整数转换为字符串
     else
     {
         alen = ll2string(bufa, sizeof(bufa), (long)a->ptr);
@@ -281,6 +281,7 @@ static int compareStringObjectsWithFlags(robj *a, robj *b, int flags)
         blen = ll2string(bufb, sizeof(bufb), (long)b->ptr);
         bstr = bufb;
     }
+    
     if (flags & REDIS_COMPARE_COLL)
     {
         return strcoll(astr, bstr);

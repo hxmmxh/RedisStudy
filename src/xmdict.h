@@ -9,9 +9,13 @@
 // 操作失败（或出错）
 #define DICT_ERR 1
 
+// 如果字典的私有数据不使用时
+// 用这个宏来避免编译器错误
+#define DICT_NOTUSED(V) ((void)V)
+
 //哈希表的初始大小
 #define DICT_HT_INITIAL_SIZE 4
-
+#define REDIS_HT_MINFILL 10
 //哈希表节点
 typedef struct dictEntry
 {
@@ -57,6 +61,13 @@ typedef struct dictType
     // 销毁值的函数
     void (*valDestructor)(void *privdata, void *obj);
 } dictType;
+
+// 哈希对象中字典的默认特定函数结构
+extern dictType hashDictType;
+// 集合对象中字典的默认特定函数结构
+extern dictType setDictType;
+// 有序集合对象中字典的默认特定函数结构
+extern dictType zsetDictType;
 
 //字典
 typedef struct dict
@@ -167,6 +178,8 @@ typedef struct dictIterator
 dict *dictCreate(dictType *type, void *privDataPtr);
 // 手动扩展字典，使其大小为第一个大于等于 size 的 2 的 N 次方
 int dictExpand(dict *d, unsigned long size);
+// 判断字典是否需要resize
+int htNeedsResize(dict *dict);
 // 给定字典,让它的已用节点数和字典大小之间的比率接近 1:1，且小于1：1
 int dictResize(dict *d);
 // 尝试将给定键值对添加到字典中，只有给定键 key 不存在于字典时，添加操作才会成功,成功返回1失败返回0
@@ -244,5 +257,9 @@ unsigned int dictGenCaseHashFunction(const unsigned char *buf, int len);
 // extern dictType dictTypeHeapStringCopyKey;
 // extern dictType dictTypeHeapStrings;
 // extern dictType dictTypeHeapStringCopyKeyValue;
+
+unsigned int dictEncObjHash(const void *key);
+int dictEncObjKeyCompare(void *privdata, const void *key1, const void *key2);
+void dictRedisObjectDestructor(void *privdata, void *val);
 
 #endif

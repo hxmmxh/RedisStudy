@@ -45,10 +45,11 @@ typedef struct redisObject
 #define REDIS_SHARED_INTEGERS 10000
 struct sharedObjects
 {
+    robj *minstring, *maxstring;
     robj *integers[REDIS_SHARED_INTEGERS]; //共享的 REDIS_ENCODING_INT编码的对象
 };
 // 共享对象
-struct sharedObjects shared;
+extern struct sharedObjects shared;
 //创建共享对象，在服务器初始化时会调用
 void createSharedObjects(void);
 
