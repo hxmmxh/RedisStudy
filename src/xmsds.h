@@ -39,7 +39,7 @@ static size_t sdsavail(const sds s);
 sds sdsnew(const char *init);
 // 根据给定的初始化字符串 init 和字符串长度 initlen创建一个新的 sds
 sds sdsnewlen(const void *init, size_t initlen);
-// 创建一个不包含内容的SDS,但是包含'\0'
+// 创建一个不包含内容的SDS,但是包含\0
 sds sdsempty(void);
 // 创建一个给定sds的副本
 sds sdsdup(const sds s);
@@ -59,6 +59,8 @@ size_t sdsAllocSize(sds s);
 // 使sds的长度增加incr，如果 incr 参数为负数，那么对字符串进行右截断操作。
 void sdsIncrLen(sds s, int incr);
 
+// 将长度为 len 的字符串 t 追加到 sds 的字符串末尾
+sds sdscatlen(sds s, const void *t, size_t len);
 // 将给定字符串 t 追加到 sds 的末尾
 sds sdscat(sds s, const char *t);
 // 将另一个 sds 追加到一个 sds 的末尾

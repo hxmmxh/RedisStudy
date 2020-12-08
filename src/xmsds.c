@@ -146,8 +146,7 @@ sds sdsgrowzero(sds s, size_t len)
     return s;
 }
 
-// 将长度为 len 的字符串 t 追加到 sds 的字符串末尾
-static sds sdscatlen(sds s, const void *t, size_t len)
+sds sdscatlen(sds s, const void *t, size_t len)
 {
     s = sdsMakeRoomFor(s, len);
     if (s == NULL)

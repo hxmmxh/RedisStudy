@@ -22,6 +22,7 @@ typedef struct dictEntry
     //键
     void *key;
     //值，可以是一个指针， 或者是一个 uint64_t 整数， 又或者是一个 int64_t 整数。
+    //int64_t 整数常用在保存键的过期时间上
     union
     {
         void *val;
@@ -184,6 +185,8 @@ int htNeedsResize(dict *dict);
 int dictResize(dict *d);
 // 尝试将给定键值对添加到字典中，只有给定键 key 不存在于字典时，添加操作才会成功,成功返回1失败返回0
 int dictAdd(dict *d, void *key, void *val);
+// 返回包含该key值的节点，可能是已存在的，不存在则是是新创建的
+dictEntry *dictReplaceRaw(dict *d, void *key);
 // 将给定的键值对添加到字典里面， 如果键已经存在于字典，那么用新值取代原有的值。键是新加的返回1，取代的返回0
 int dictReplace(dict *d, void *key, void *val);
 // 从字典中删除包含给定键的节点，并且调用键值的释放函数来删除键值

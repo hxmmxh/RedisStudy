@@ -19,6 +19,27 @@ typedef struct redisClient
     struct redisCommand *cmd; //命令的实现函数
     struct redisCommand *lastcmd;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // 请求的类型：内联命令还是多条命令
     int reqtype;
 

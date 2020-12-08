@@ -32,8 +32,6 @@ static int _dictExpandIfNeeded(dict *d);
 static int _dictKeyIndex(dict *d, const void *key);
 // 在字典中插入key，返回插入的那个节点
 static dictEntry *dictAddRaw(dict *d, void *key);
-// 返回包含该key值的节点，可能是已存在的也可能是新创建的
-static dictEntry *dictReplaceRaw(dict *d, void *key);
 // 删除字典中给定的键值
 static int dictGenericDelete(dict *d, const void *key, int nofree);
 // 翻转二进制字符
@@ -319,7 +317,7 @@ static int _dictClear(dict *d, dictht *ht, void(callback)(void *))
     for (i = 0; i < ht->size && ht->used > 0; ++i)
     {
         //65535=1111 1111 1111 1111
-        //i&65535==0，相当于判断i是65535的整数倍
+        //i&65535==0，相当于判断i是65536的整数倍
         //不知道用途
         if (callback && (i & 65535) == 0)
             callback(d->privdata);
